@@ -1,6 +1,6 @@
 """
 src/market_analysis.py
-Uses Claude AI to analyse current market conditions and generate
+Uses Google Gemini AI to analyse current market conditions and generate
 a daily commentary + trading recommendations for the portfolio.
 """
 
@@ -9,20 +9,22 @@ from __future__ import annotations
 import json
 import datetime
 
-import anthropic
+import google.generativeai as genai
 
 import config.settings as cfg
 from src.alpaca_client import get_all_positions, get_account, get_latest_price
 from src.logger import logger
 
-_client: anthropic.Anthropic | None = None
+_model = None
 
 
-def _get_client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=cfg.ANTHROPIC_API_KEY)
-    return _client
+def _get_model():
+    global _model
+    if _model is None:
+        genai.configure(api_key=cfg.ANTHROPIC_API_KEY)   # reusing same env var
+        _model = genai.GenerativeModel("gemini-1.5-flash")
+        logger.info("Gemini AI model initialised")
+    return _model
 
 
 def _build_portfolio_snapshot() -> dict:
@@ -75,18 +77,14 @@ Today is {today}.
 Keep your response concise, data-driven, and actionable. Use bullet points.
 """
 
-    logger.info("Running daily AI market analysis with Claude...")
+    logger.info("Running daily AI market analysis with Gemini...")
     try:
-        response = _get_client().messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1500,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        analysis = response.content[0].text
+        response = _get_model().generate_content(prompt)
+        analysis = response.text
         logger.success("Daily AI analysis complete.")
         return analysis
     except Exception as exc:
-        logger.error(f"Claude analysis failed: {exc}")
+        logger.error(f"Gemini analysis failed: {exc}")
         return f"⚠️  Analysis unavailable: {exc}"
 
 
@@ -106,11 +104,7 @@ Current price: {price}
 Cover: recent price action, key catalysts, short-term outlook (1-4 weeks), and a clear BUY/HOLD/AVOID verdict.
 """
     try:
-        response = _get_client().messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=400,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return response.content[0].text
+        response = _get_model().generate_content(prompt)
+        return response.text
     except Exception as exc:
         return f"⚠️  Check unavailable: {exc}"

@@ -16,7 +16,7 @@
 | 📅 **Weekly DCA** | Auto-buys a rotating basket of stocks every Monday at market open |
 | 🛑 **Stop-Loss** | Automatically sells entire position if it falls ≥ 20% |
 | 🎯 **Take-Profit** | Sells half the position when it gains ≥ 40% |
-| 🤖 **AI Analysis** | Daily Claude AI market analysis + recommendations |
+| 🤖 **AI Analysis** | Daily **Google Gemini** market analysis + recommendations (free) |
 | 📧 **Email Reports** | Beautiful HTML daily report sent to your inbox |
 | 🔁 **Scheduler** | Fully automated — runs 24/7 with APScheduler |
 | 🧪 **Paper Trading** | Safe testing with Alpaca's paper environment |
@@ -86,7 +86,7 @@ pip install -r requirements.txt
 cp .env.example .env
 # Open .env and fill in your credentials:
 #   ALPACA_API_KEY, ALPACA_SECRET_KEY  →  from app.alpaca.markets
-#   ANTHROPIC_API_KEY                  →  from console.anthropic.com
+#   ANTHROPIC_API_KEY                  →  Gemini key from aistudio.google.com (FREE)
 #   EMAIL_SENDER, EMAIL_PASSWORD       →  Gmail + App Password
 ```
 
