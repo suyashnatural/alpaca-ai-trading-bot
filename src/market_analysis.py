@@ -74,7 +74,7 @@ Keep your response concise, data-driven, and actionable. Use bullet points.
     logger.info("Running daily AI market analysis with Gemini...")
     try:
         response = _get_client().models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash",
             contents=prompt,
         )
         analysis = response.text
@@ -99,7 +99,7 @@ Cover: recent price action, key catalysts, short-term outlook (1-4 weeks), and a
 """
     try:
         response = _get_client().models.generate_content(
-            model="gemini-2.0-flash",
+            model="gemini-1.5-flash",
             contents=prompt,
         )
         return response.text
