@@ -9,44 +9,38 @@ from __future__ import annotations
 import json
 import datetime
 
-import google.generativeai as genai
+from google import genai
 
 import config.settings as cfg
 from src.alpaca_client import get_all_positions, get_account, get_latest_price
 from src.logger import logger
 
-_model = None
+_client = None
 
 
-def _get_model():
-    global _model
-    if _model is None:
-        genai.configure(api_key=cfg.ANTHROPIC_API_KEY)   # reusing same env var
-        _model = genai.GenerativeModel("gemini-1.5-flash")
-        logger.info("Gemini AI model initialised")
-    return _model
+def _get_client():
+    global _client
+    if _client is None:
+        _client = genai.Client(api_key=cfg.ANTHROPIC_API_KEY)
+        logger.info("Gemini AI client initialised")
+    return _client
 
 
 def _build_portfolio_snapshot() -> dict:
     """Build a concise snapshot of the current portfolio for the AI prompt."""
     account   = get_account()
     positions = get_all_positions()
-
-    snapshot = {
+    return {
         "date":            datetime.date.today().isoformat(),
         "portfolio_value": account["portfolio_value"],
         "cash":            account["cash"],
         "buying_power":    account["buying_power"],
         "positions":       positions,
     }
-    return snapshot
 
 
 def run_daily_analysis() -> str:
-    """
-    Ask Claude to analyse the portfolio and current market sentiment.
-    Returns the full analysis as a string.
-    """
+    """Ask Gemini to analyse the portfolio and current market sentiment."""
     snapshot = _build_portfolio_snapshot()
     today    = datetime.date.today().strftime("%A, %B %d %Y")
 
@@ -79,7 +73,10 @@ Keep your response concise, data-driven, and actionable. Use bullet points.
 
     logger.info("Running daily AI market analysis with Gemini...")
     try:
-        response = _get_model().generate_content(prompt)
+        response = _get_client().models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
         analysis = response.text
         logger.success("Daily AI analysis complete.")
         return analysis
@@ -89,10 +86,7 @@ Keep your response concise, data-driven, and actionable. Use bullet points.
 
 
 def quick_symbol_check(symbol: str) -> str:
-    """
-    Ask Claude for a quick single-symbol sentiment check.
-    Useful for ad-hoc checks.
-    """
+    """Ask Gemini for a quick single-symbol sentiment check."""
     try:
         price = get_latest_price(symbol)
     except Exception:
@@ -104,7 +98,10 @@ Current price: {price}
 Cover: recent price action, key catalysts, short-term outlook (1-4 weeks), and a clear BUY/HOLD/AVOID verdict.
 """
     try:
-        response = _get_model().generate_content(prompt)
+        response = _get_client().models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+        )
         return response.text
     except Exception as exc:
         return f"⚠️  Check unavailable: {exc}"
