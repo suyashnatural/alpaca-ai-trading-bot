@@ -140,7 +140,8 @@ def build_scheduler() -> BlockingScheduler:
 
     logger.info("Scheduler built with jobs:")
     for job in scheduler.get_jobs():
-        logger.info(f"  • {job.name}  next run: {job.next_run_time}")
+        next_run = getattr(job, "next_run_time", None) or getattr(job, "next_fire_time", "scheduled")
+        logger.info(f"  • {job.name}  next run: {next_run}")
 
     return scheduler
 
