@@ -22,8 +22,8 @@ def _invoke(prompt: str, max_tokens: int = 1500) -> str:
         f"/model/{cfg.BEDROCK_MODEL_ID}/invoke"
     )
     headers = {
-        "Content-Type": "application/json",
-        "x-api-key":    cfg.BEDROCK_API_KEY,
+        "Content-Type":  "application/json",
+        "Authorization": f"Bearer {cfg.BEDROCK_API_KEY}",
     }
     body = {
         "anthropic_version": "bedrock-2023-05-31",
