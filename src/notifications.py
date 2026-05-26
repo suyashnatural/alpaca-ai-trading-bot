@@ -16,68 +16,105 @@ from src.logger import logger
 
 
 def _md_to_html(text: str) -> str:
-    """Convert markdown to HTML for email rendering."""
-    a = text
-    a = re.sub(r"^### (.+)$", r"<h3>\1</h3>", a, flags=re.MULTILINE)
-    a = re.sub(r"^## (.+)$",  r"<h2 style='color:#1a1a2e;'>\1</h2>", a, flags=re.MULTILINE)
-    a = re.sub(r"^# (.+)$",   r"<h1 style='color:#1a1a2e;'>\1</h1>", a, flags=re.MULTILINE)
-    a = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", a)
-    a = re.sub(r"^> (.+)$",
-               r'<blockquote style="border-left:4px solid #6c63ff;padding:8px 16px;'
-               r'margin:8px 0;background:#f8f9ff;border-radius:0 6px 6px 0;">\1</blockquote>',
-               a, flags=re.MULTILINE)
-    a = re.sub(r"^---$",
-               r'<hr style="border:none;border-top:1px solid #eee;margin:16px 0;">',
-               a, flags=re.MULTILINE)
-    a = re.sub(r"^- (.+)$", r"<li style='margin:4px 0;'>\1</li>", a, flags=re.MULTILINE)
-    # Tables
-    result_lines, in_table, row_num = [], False, 0
-    for line in a.split("\n"):
+    """Convert markdown to clean HTML — no <br> inside tables."""
+    lines = text.split("\n")
+    result = []
+    in_table = False
+    row_num = 0
+
+    for line in lines:
         stripped = line.strip()
+
+        # ── Table rows ────────────────────────────────────────────────────────
         if stripped.startswith("|") and stripped.count("|") > 1:
             if not in_table:
-                result_lines.append(
-                    '<table border="1" cellpadding="6" cellspacing="0" '
-                    'style="border-collapse:collapse;width:100%;font-size:13px;'
-                    'margin:10px 0;background:white;">'
+                result.append(
+                    '<table cellpadding="0" cellspacing="0" '
+                    'style="border-collapse:collapse;width:100%;'
+                    'font-size:13px;margin:12px 0;">'
                 )
                 in_table = True
                 row_num = 0
+            # Skip separator lines like |---|---|
             if re.match(r"\|[-| :]+\|", stripped):
-                continue  # skip separator
+                continue
             cells = [c.strip() for c in stripped.strip("|").split("|")]
             if row_num == 0:
-                tag = "th"
-                style = 'style="padding:8px 12px;border:1px solid #ddd;background:#1a1a2e;color:white;text-align:left;"'
+                tds = "".join(
+                    f'<th style="padding:8px 12px;border:1px solid #ccc;'
+                    f'background:#1a1a2e;color:white;text-align:left;">{c}</th>'
+                    for c in cells
+                )
             else:
-                tag = "td"
-                bg = "#fafafa" if row_num % 2 == 0 else "white"
-                style = f'style="padding:7px 12px;border:1px solid #eee;background:{bg};"'
-            row = "".join(f"<{tag} {style}>{c}</{tag}>" for c in cells)
-            result_lines.append(f"<tr>{row}</tr>")
+                bg = "#f5f5f5" if row_num % 2 == 0 else "#ffffff"
+                tds = "".join(
+                    f'<td style="padding:7px 12px;border:1px solid #e0e0e0;'
+                    f'background:{bg};">{c}</td>'
+                    for c in cells
+                )
+            result.append(f"<tr>{tds}</tr>")
             row_num += 1
-        else:
-            if in_table:
-                result_lines.append("</table>")
-                in_table = False
-                row_num = 0
-            if stripped:  # skip blank lines inside sections
-                result_lines.append(line)
+            continue
+
+        # Close table if we were in one
+        if in_table:
+            result.append("</table>")
+            in_table = False
+            row_num = 0
+
+        # ── Headers ───────────────────────────────────────────────────────────
+        m = re.match(r"^(#{1,3}) (.+)$", stripped)
+        if m:
+            level = len(m.group(1))
+            text_content = m.group(2)
+            if level == 1:
+                result.append(f'<h2 style="color:#1a1a2e;margin:16px 0 4px;">{text_content}</h2>')
+            elif level == 2:
+                result.append(
+                    f'<h3 style="color:#1a1a2e;border-bottom:2px solid #6c63ff;'
+                    f'padding-bottom:4px;margin:14px 0 4px;">{text_content}</h3>'
+                )
+            else:
+                result.append(f'<h4 style="color:#333;margin:10px 0 2px;">{text_content}</h4>')
+            continue
+
+        # ── Horizontal rule ───────────────────────────────────────────────────
+        if stripped == "---":
+            result.append('<hr style="border:none;border-top:1px solid #eee;margin:10px 0;">')
+            continue
+
+        # ── Blockquote ────────────────────────────────────────────────────────
+        if stripped.startswith("> "):
+            content = stripped[2:]
+            result.append(
+                f'<div style="border-left:4px solid #6c63ff;padding:8px 14px;'
+                f'margin:8px 0;background:#eef0ff;border-radius:0 6px 6px 0;'
+                f'font-size:13px;">{content}</div>'
+            )
+            continue
+
+        # ── Bullet point ──────────────────────────────────────────────────────
+        if stripped.startswith("- "):
+            content = stripped[2:]
+            result.append(f'<div style="padding:3px 0 3px 16px;">• {content}</div>')
+            continue
+
+        # ── Empty line ────────────────────────────────────────────────────────
+        if not stripped:
+            result.append('<div style="height:6px;"></div>')
+            continue
+
+        # ── Normal paragraph ──────────────────────────────────────────────────
+        result.append(f'<p style="margin:4px 0;">{stripped}</p>')
+
     if in_table:
-        result_lines.append("</table>")
-    a = "\n".join(result_lines)
-    # Clean up excessive line breaks
-    import re as _re
-    a = _re.sub(r"(<br>){3,}", "<br><br>", a)
-    # Remove <br> tags that appear inside or between table tags
-    import re as _re
-    a = _re.sub(r'(</tr>)<br>', r'\1', a)
-    a = _re.sub(r'(<tr>)<br>', r'\1', a)
-    a = _re.sub(r'(<table[^>]*>)<br>', r'\1', a)
-    a = _re.sub(r'(</table>)<br>', r'\1', a)
-    a = _re.sub(r'(<br>){3,}', '<br><br>', a)
-    a = a.replace("\n", "<br>")
-    return a
+        result.append("</table>")
+
+    # Apply bold and italic inline
+    html = "\n".join(result)
+    html = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html)
+    html = re.sub(r"\*(.+?)\*",     r"<i>\1</i>", html)
+    return html
 
 
 def _color(pnl_pct: float) -> str:
@@ -90,44 +127,45 @@ def _positions_table(positions: list[dict]) -> str:
     rows = ""
     for p in positions:
         color = _color(p["pnl_pct"])
-        rows += f"""
-        <tr>
-          <td><b>{p['symbol']}</b></td>
-          <td>${p['market_value']:,.2f}</td>
-          <td>${p['avg_entry']:,.2f}</td>
-          <td>${p['current_price']:,.2f}</td>
-          <td style="color:{color}"><b>{p['pnl_pct']:+.2f}%</b></td>
-          <td style="color:{color}">${p['unrealized_pl']:+,.2f}</td>
-        </tr>"""
-    return f"""
-    <table border="1" cellpadding="8" cellspacing="0"
-           style="border-collapse:collapse;width:100%;font-size:13px;">
-      <thead style="background:#1a1a2e;color:white;">
-        <tr>
-          <th>Symbol</th><th>Mkt Value</th><th>Avg Entry</th>
-          <th>Current</th><th>P&L %</th><th>P&L $</th>
-        </tr>
-      </thead>
-      <tbody>{rows}</tbody>
-    </table>"""
+        rows += (
+            f"<tr>"
+            f"<td style='padding:7px 12px;border:1px solid #e0e0e0;'><b>{p['symbol']}</b></td>"
+            f"<td style='padding:7px 12px;border:1px solid #e0e0e0;'>${p['market_value']:,.2f}</td>"
+            f"<td style='padding:7px 12px;border:1px solid #e0e0e0;'>${p['avg_entry']:,.2f}</td>"
+            f"<td style='padding:7px 12px;border:1px solid #e0e0e0;'>${p['current_price']:,.2f}</td>"
+            f"<td style='padding:7px 12px;border:1px solid #e0e0e0;color:{color};'><b>{p['pnl_pct']:+.2f}%</b></td>"
+            f"<td style='padding:7px 12px;border:1px solid #e0e0e0;color:{color};'>${p['unrealized_pl']:+,.2f}</td>"
+            f"</tr>"
+        )
+    header = (
+        "<tr>"
+        "<th style='padding:8px 12px;border:1px solid #ccc;background:#1a1a2e;color:white;text-align:left;'>Symbol</th>"
+        "<th style='padding:8px 12px;border:1px solid #ccc;background:#1a1a2e;color:white;text-align:left;'>Mkt Value</th>"
+        "<th style='padding:8px 12px;border:1px solid #ccc;background:#1a1a2e;color:white;text-align:left;'>Avg Entry</th>"
+        "<th style='padding:8px 12px;border:1px solid #ccc;background:#1a1a2e;color:white;text-align:left;'>Current</th>"
+        "<th style='padding:8px 12px;border:1px solid #ccc;background:#1a1a2e;color:white;text-align:left;'>P&L %</th>"
+        "<th style='padding:8px 12px;border:1px solid #ccc;background:#1a1a2e;color:white;text-align:left;'>P&L $</th>"
+        "</tr>"
+    )
+    return (
+        '<table cellpadding="0" cellspacing="0" '
+        'style="border-collapse:collapse;width:100%;font-size:13px;">'
+        f"{header}{rows}</table>"
+    )
 
 
 def _actions_section(actions: list[dict]) -> str:
     if not actions:
         return "<p>✅ No risk-management actions taken today.</p>"
-    items = ""
-    for a in actions:
-        emoji = "🛑" if a.get("action") == "STOP_LOSS" else "🎯"
-        items += f"<li>{emoji} <b>{a['symbol']}</b>: {a.get('reason','')}</li>"
-    return f"<ul>{items}</ul>"
+    items = "".join(
+        f"<div style='padding:4px 0;'>{'🛑' if a.get('action')=='STOP_LOSS' else '🎯'} "
+        f"<b>{a['symbol']}</b>: {a.get('reason','')}</div>"
+        for a in actions
+    )
+    return items
 
 
-def _build_html_report(
-    account:    dict,
-    positions:  list[dict],
-    analysis:   str,
-    actions:    list[dict],
-) -> str:
+def _build_html_report(account, positions, analysis, actions):
     today = datetime.date.today().strftime("%A, %B %d %Y")
     total_pnl = sum(p["unrealized_pl"] for p in positions)
     total_pnl_color = _color(total_pnl)
@@ -140,67 +178,64 @@ def _build_html_report(
     )
     analysis_html = _md_to_html(analysis)
 
-    return f"""
-<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;background:#f4f6f9;padding:20px;color:#333;">
-<div style="max-width:700px;margin:auto;background:white;border-radius:12px;
-            overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1);">
-  <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);
-              color:white;padding:24px 28px;">
+<div style="max-width:700px;margin:auto;background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1);">
+
+  <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);color:white;padding:24px 28px;">
     <h2 style="margin:0;">📈 Alpaca Trading Bot — Daily Report</h2>
     <p style="margin:4px 0 8px;opacity:.7;">{today}</p>
     {mode_badge}
   </div>
+
   <div style="padding:20px 28px;background:#fafafa;border-bottom:1px solid #eee;">
     <h3 style="margin-top:0;">💼 Account Summary</h3>
-    <table style="width:100%;font-size:14px;">
+    <table style="width:100%;font-size:14px;border-collapse:collapse;">
       <tr>
-        <td>Portfolio Value</td>
-        <td><b>${account['portfolio_value']:,.2f}</b></td>
-        <td>Cash Available</td>
-        <td><b>${account['cash']:,.2f}</b></td>
+        <td style="padding:6px 8px;">Portfolio Value</td>
+        <td style="padding:6px 8px;"><b>${account['portfolio_value']:,.2f}</b></td>
+        <td style="padding:6px 8px;">Cash Available</td>
+        <td style="padding:6px 8px;"><b>${account['cash']:,.2f}</b></td>
       </tr>
       <tr>
-        <td>Buying Power</td>
-        <td><b>${account['buying_power']:,.2f}</b></td>
-        <td>Total Unrealised P&L</td>
-        <td style="color:{total_pnl_color}"><b>${total_pnl:+,.2f}</b></td>
+        <td style="padding:6px 8px;">Buying Power</td>
+        <td style="padding:6px 8px;"><b>${account['buying_power']:,.2f}</b></td>
+        <td style="padding:6px 8px;">Total Unrealised P&L</td>
+        <td style="padding:6px 8px;color:{total_pnl_color};"><b>${total_pnl:+,.2f}</b></td>
       </tr>
     </table>
   </div>
+
   <div style="padding:20px 28px;border-bottom:1px solid #eee;">
     <h3 style="margin-top:0;">📊 Open Positions ({len(positions)})</h3>
     {_positions_table(positions)}
   </div>
+
   <div style="padding:20px 28px;border-bottom:1px solid #eee;">
     <h3 style="margin-top:0;">⚡ Risk Management Actions</h3>
     {_actions_section(actions)}
   </div>
+
   <div style="padding:20px 28px;border-bottom:1px solid #eee;">
     <h3 style="margin-top:0;">🤖 Claude AI Market Analysis</h3>
-    <div style="background:#f8f9ff;border-left:4px solid #6c63ff;
-                padding:14px 18px;border-radius:0 8px 8px 0;font-size:13px;line-height:1.7;">
+    <div style="background:#f8f9ff;border-left:4px solid #6c63ff;padding:16px 20px;border-radius:0 8px 8px 0;font-size:13px;line-height:1.8;">
       {analysis_html}
     </div>
   </div>
-  <div style="padding:16px 28px;background:#f4f6f9;text-align:center;
-              font-size:11px;color:#999;">
+
+  <div style="padding:16px 28px;background:#f4f6f9;text-align:center;font-size:11px;color:#999;">
     ⚠️ This bot is for educational purposes only. Not financial advice.<br>
     Alpaca Trading Bot • Auto-generated report
   </div>
+
 </div>
 </body>
 </html>"""
 
 
-def send_daily_report(
-    account:   dict,
-    positions: list[dict],
-    analysis:  str,
-    actions:   list[dict],
-) -> bool:
+def send_daily_report(account, positions, analysis, actions) -> bool:
     if not cfg.EMAIL_SENDER or not cfg.EMAIL_PASSWORD:
         logger.warning("Email credentials not configured — skipping report.")
         return False
