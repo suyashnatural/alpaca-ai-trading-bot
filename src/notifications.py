@@ -77,7 +77,53 @@ def _build_html_report(
         '<span style="background:#ee5a24;color:#fff;padding:2px 8px;'
         'border-radius:4px;font-size:11px;font-weight:bold;">LIVE TRADING</span>'
     )
-    analysis_html = analysis.replace("\n", "<br>")
+    # Convert markdown to HTML properly
+    import re
+    a = analysis
+    # Headers
+    a = re.sub(r'^### (.+)$', r'<h3></h3>', a, flags=re.MULTILINE)
+    a = re.sub(r'^## (.+)$',  r'<h2></h2>', a, flags=re.MULTILINE)
+    a = re.sub(r'^# (.+)$',   r'<h1></h1>', a, flags=re.MULTILINE)
+    # Bold
+    a = re.sub(r'\*\*(.+?)\*\*', r'<b></b>', a)
+    # Tables - convert markdown table rows to HTML
+    table_lines = []
+    in_table = False
+    result_lines = []
+    for line in a.split("\n"):
+        if line.strip().startswith("|") and "|" in line[1:]:
+            if not in_table:
+                result_lines.append('<table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:13px;margin:10px 0;">')
+                in_table = True
+            if re.match(r'\|[-| :]+\|', line.strip()):
+                continue  # skip separator row
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            is_header = not in_table or result_lines[-1] == '<table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:13px;margin:10px 0;">'
+            tag = "th" if len(table_lines) == 0 else "td"
+            row = "".join(f"<{tag} style='padding:6px 10px;border:1px solid #ddd;'>{c}</{tag}>" for c in cells)
+            result_lines.append(f"<tr>{row}</tr>")
+            table_lines.append(line)
+        else:
+            if in_table:
+                result_lines.append("</table>")
+                in_table = False
+                table_lines = []
+            result_lines.append(line)
+    if in_table:
+        result_lines.append("</table>")
+    a = "\n".join(result_lines)
+    # Bullet points
+    a = re.sub(r'^- (.+)$', r'<li></li>', a, flags=re.MULTILINE)
+    a = re.sub(r'(<li>.*</li>)', r'<ul></ul>', a, flags=re.DOTALL)
+    # Blockquotes
+    a = re.sub(r'^> (.+)$', r'<blockquote style="border-left:4px solid #6c63ff;padding:8px 16px;margin:8px 0;background:#f8f9ff;"></blockquote>', a, flags=re.MULTILINE)
+    # Code blocks
+    a = re.sub(r'```[\w]*
+?(.*?)```', r'<pre style="background:#1a1a2e;color:#00c896;padding:12px;border-radius:6px;overflow-x:auto;"></pre>', a, flags=re.DOTALL)
+    # Horizontal rules
+    a = re.sub(r'^---$', r'<hr style="border:none;border-top:1px solid #eee;margin:16px 0;">', a, flags=re.MULTILINE)
+    # Line breaks
+    analysis_html = a.replace("\n", "<br>")
 
     return f"""
 <!DOCTYPE html>
