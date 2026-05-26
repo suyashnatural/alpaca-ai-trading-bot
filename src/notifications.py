@@ -31,31 +31,44 @@ def _md_to_html(text: str) -> str:
                a, flags=re.MULTILINE)
     a = re.sub(r"^- (.+)$", r"<li style='margin:4px 0;'>\1</li>", a, flags=re.MULTILINE)
     # Tables
-    result_lines, in_table = [], False
+    result_lines, in_table, row_num = [], False, 0
     for line in a.split("\n"):
-        if line.strip().startswith("|") and line.count("|") > 1:
+        stripped = line.strip()
+        if stripped.startswith("|") and stripped.count("|") > 1:
             if not in_table:
                 result_lines.append(
                     '<table border="1" cellpadding="6" cellspacing="0" '
-                    'style="border-collapse:collapse;width:100%;font-size:13px;margin:10px 0;">'
+                    'style="border-collapse:collapse;width:100%;font-size:13px;'
+                    'margin:10px 0;background:white;">'
                 )
                 in_table = True
-            if re.match(r"\|[-| :]+\|", line.strip()):
-                continue
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            row = "".join(
-                f'<td style="padding:6px 10px;border:1px solid #ddd;">{c}</td>'
-                for c in cells
-            )
+                row_num = 0
+            if re.match(r"\|[-| :]+\|", stripped):
+                continue  # skip separator
+            cells = [c.strip() for c in stripped.strip("|").split("|")]
+            if row_num == 0:
+                tag = "th"
+                style = 'style="padding:8px 12px;border:1px solid #ddd;background:#1a1a2e;color:white;text-align:left;"'
+            else:
+                tag = "td"
+                bg = "#fafafa" if row_num % 2 == 0 else "white"
+                style = f'style="padding:7px 12px;border:1px solid #eee;background:{bg};"'
+            row = "".join(f"<{tag} {style}>{c}</{tag}>" for c in cells)
             result_lines.append(f"<tr>{row}</tr>")
+            row_num += 1
         else:
             if in_table:
                 result_lines.append("</table>")
                 in_table = False
-            result_lines.append(line)
+                row_num = 0
+            if stripped:  # skip blank lines inside sections
+                result_lines.append(line)
     if in_table:
         result_lines.append("</table>")
     a = "\n".join(result_lines)
+    # Clean up excessive line breaks
+    import re as _re
+    a = _re.sub(r"(<br>){3,}", "<br><br>", a)
     a = a.replace("\n", "<br>")
     return a
 
