@@ -13,8 +13,11 @@ ALPACA_API_KEY    = os.getenv("ALPACA_API_KEY", "")
 ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY", "")
 ALPACA_PAPER      = os.getenv("ALPACA_PAPER", "true").lower() == "true"
 
-# ── Claude AI ─────────────────────────────────────────────────────────────────
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+# ── Amazon Bedrock (Claude Opus) ──────────────────────────────────────────────
+AWS_ACCESS_KEY_ID     = os.getenv("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY", "")
+AWS_REGION            = os.getenv("AWS_REGION", "us-east-1")
+BEDROCK_MODEL_ID      = os.getenv("BEDROCK_MODEL_ID", "anthropic.claude-opus-4-5")
 
 # ── Email ─────────────────────────────────────────────────────────────────────
 EMAIL_SENDER   = os.getenv("EMAIL_SENDER", "")
@@ -76,9 +79,10 @@ def validate_config() -> list[str]:
     """Return a list of missing required config keys."""
     missing = []
     required = {
-        "ALPACA_API_KEY":    ALPACA_API_KEY,
-        "ALPACA_SECRET_KEY": ALPACA_SECRET_KEY,
-        "ANTHROPIC_API_KEY": ANTHROPIC_API_KEY,
+        "ALPACA_API_KEY":     ALPACA_API_KEY,
+        "ALPACA_SECRET_KEY":  ALPACA_SECRET_KEY,
+        "AWS_ACCESS_KEY_ID":  AWS_ACCESS_KEY_ID,
+        "AWS_SECRET_ACCESS_KEY": AWS_SECRET_ACCESS_KEY,
     }
     for key, val in required.items():
         if not val:
