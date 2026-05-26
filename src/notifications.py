@@ -69,6 +69,13 @@ def _md_to_html(text: str) -> str:
     # Clean up excessive line breaks
     import re as _re
     a = _re.sub(r"(<br>){3,}", "<br><br>", a)
+    # Remove <br> tags that appear inside or between table tags
+    import re as _re
+    a = _re.sub(r'(</tr>)<br>', r'\1', a)
+    a = _re.sub(r'(<tr>)<br>', r'\1', a)
+    a = _re.sub(r'(<table[^>]*>)<br>', r'\1', a)
+    a = _re.sub(r'(</table>)<br>', r'\1', a)
+    a = _re.sub(r'(<br>){3,}', '<br><br>', a)
     a = a.replace("\n", "<br>")
     return a
 
