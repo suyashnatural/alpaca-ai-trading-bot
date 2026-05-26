@@ -1,49 +1,38 @@
 """
 src/market_analysis.py
-Uses Claude Opus via Amazon Bedrock to analyse current market conditions
-and generate daily commentary + trading recommendations for the portfolio.
+Uses Claude Opus via Amazon Bedrock API Key (direct HTTP) to analyse
+current market conditions and generate trading recommendations.
 """
 
 from __future__ import annotations
 
 import json
 import datetime
-import boto3
+import requests
 
 import config.settings as cfg
 from src.alpaca_client import get_all_positions, get_account, get_latest_price
 from src.logger import logger
 
-_client = None
-
-
-def _get_client():
-    global _client
-    if _client is None:
-        _client = boto3.client(
-            service_name="bedrock-runtime",
-            region_name=cfg.AWS_REGION,
-            aws_access_key_id=cfg.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=cfg.AWS_SECRET_ACCESS_KEY,
-        )
-        logger.info("Amazon Bedrock client initialised (Claude Opus)")
-    return _client
-
 
 def _invoke(prompt: str, max_tokens: int = 1500) -> str:
-    """Send a prompt to Claude Opus via Bedrock and return the text response."""
-    body = json.dumps({
+    """Send a prompt to Claude via Bedrock API key and return the text response."""
+    url = (
+        f"https://bedrock-runtime.{cfg.AWS_REGION}.amazonaws.com"
+        f"/model/{cfg.BEDROCK_MODEL_ID}/invoke"
+    )
+    headers = {
+        "Content-Type":  "application/json",
+        "Authorization": f"Bearer {cfg.BEDROCK_API_KEY}",
+    }
+    body = {
         "anthropic_version": "bedrock-2023-05-31",
         "max_tokens": max_tokens,
         "messages": [{"role": "user", "content": prompt}],
-    })
-    response = _get_client().invoke_model(
-        modelId=cfg.BEDROCK_MODEL_ID,
-        body=body,
-        contentType="application/json",
-        accept="application/json",
-    )
-    result = json.loads(response["body"].read())
+    }
+    response = requests.post(url, headers=headers, json=body, timeout=60)
+    response.raise_for_status()
+    result = response.json()
     return result["content"][0]["text"]
 
 
