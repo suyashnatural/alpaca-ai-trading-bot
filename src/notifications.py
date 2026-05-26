@@ -5,22 +5,63 @@ Sends HTML email daily reports and trade alerts via Gmail SMTP.
 
 from __future__ import annotations
 
+import re
 import smtplib
 import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from typing import Optional
 
 import config.settings as cfg
 from src.logger import logger
 
 
-# ── HTML Helpers ──────────────────────────────────────────────────────────────
+def _md_to_html(text: str) -> str:
+    """Convert markdown to HTML for email rendering."""
+    a = text
+    a = re.sub(r"^### (.+)$", r"<h3>\1</h3>", a, flags=re.MULTILINE)
+    a = re.sub(r"^## (.+)$",  r"<h2 style='color:#1a1a2e;'>\1</h2>", a, flags=re.MULTILINE)
+    a = re.sub(r"^# (.+)$",   r"<h1 style='color:#1a1a2e;'>\1</h1>", a, flags=re.MULTILINE)
+    a = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", a)
+    a = re.sub(r"^> (.+)$",
+               r'<blockquote style="border-left:4px solid #6c63ff;padding:8px 16px;'
+               r'margin:8px 0;background:#f8f9ff;border-radius:0 6px 6px 0;">\1</blockquote>',
+               a, flags=re.MULTILINE)
+    a = re.sub(r"^---$",
+               r'<hr style="border:none;border-top:1px solid #eee;margin:16px 0;">',
+               a, flags=re.MULTILINE)
+    a = re.sub(r"^- (.+)$", r"<li style='margin:4px 0;'>\1</li>", a, flags=re.MULTILINE)
+    # Tables
+    result_lines, in_table = [], False
+    for line in a.split("\n"):
+        if line.strip().startswith("|") and line.count("|") > 1:
+            if not in_table:
+                result_lines.append(
+                    '<table border="1" cellpadding="6" cellspacing="0" '
+                    'style="border-collapse:collapse;width:100%;font-size:13px;margin:10px 0;">'
+                )
+                in_table = True
+            if re.match(r"\|[-| :]+\|", line.strip()):
+                continue
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            row = "".join(
+                f'<td style="padding:6px 10px;border:1px solid #ddd;">{c}</td>'
+                for c in cells
+            )
+            result_lines.append(f"<tr>{row}</tr>")
+        else:
+            if in_table:
+                result_lines.append("</table>")
+                in_table = False
+            result_lines.append(line)
+    if in_table:
+        result_lines.append("</table>")
+    a = "\n".join(result_lines)
+    a = a.replace("\n", "<br>")
+    return a
+
 
 def _color(pnl_pct: float) -> str:
-    if pnl_pct >= 0:
-        return "#00c896"   # green
-    return "#ff4d4d"       # red
+    return "#00c896" if pnl_pct >= 0 else "#ff4d4d"
 
 
 def _positions_table(positions: list[dict]) -> str:
@@ -40,7 +81,7 @@ def _positions_table(positions: list[dict]) -> str:
         </tr>"""
     return f"""
     <table border="1" cellpadding="8" cellspacing="0"
-           style="border-collapse:collapse;width:100%;font-family:monospace;font-size:13px;">
+           style="border-collapse:collapse;width:100%;font-size:13px;">
       <thead style="background:#1a1a2e;color:white;">
         <tr>
           <th>Symbol</th><th>Mkt Value</th><th>Avg Entry</th>
@@ -77,53 +118,7 @@ def _build_html_report(
         '<span style="background:#ee5a24;color:#fff;padding:2px 8px;'
         'border-radius:4px;font-size:11px;font-weight:bold;">LIVE TRADING</span>'
     )
-    # Convert markdown to HTML properly
-    import re
-    a = analysis
-    # Headers
-    a = re.sub(r'^### (.+)$', r'<h3></h3>', a, flags=re.MULTILINE)
-    a = re.sub(r'^## (.+)$',  r'<h2></h2>', a, flags=re.MULTILINE)
-    a = re.sub(r'^# (.+)$',   r'<h1></h1>', a, flags=re.MULTILINE)
-    # Bold
-    a = re.sub(r'\*\*(.+?)\*\*', r'<b></b>', a)
-    # Tables - convert markdown table rows to HTML
-    table_lines = []
-    in_table = False
-    result_lines = []
-    for line in a.split("\n"):
-        if line.strip().startswith("|") and "|" in line[1:]:
-            if not in_table:
-                result_lines.append('<table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:13px;margin:10px 0;">')
-                in_table = True
-            if re.match(r'\|[-| :]+\|', line.strip()):
-                continue  # skip separator row
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            is_header = not in_table or result_lines[-1] == '<table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse;width:100%;font-size:13px;margin:10px 0;">'
-            tag = "th" if len(table_lines) == 0 else "td"
-            row = "".join(f"<{tag} style='padding:6px 10px;border:1px solid #ddd;'>{c}</{tag}>" for c in cells)
-            result_lines.append(f"<tr>{row}</tr>")
-            table_lines.append(line)
-        else:
-            if in_table:
-                result_lines.append("</table>")
-                in_table = False
-                table_lines = []
-            result_lines.append(line)
-    if in_table:
-        result_lines.append("</table>")
-    a = "\n".join(result_lines)
-    # Bullet points
-    a = re.sub(r'^- (.+)$', r'<li></li>', a, flags=re.MULTILINE)
-    a = re.sub(r'(<li>.*</li>)', r'<ul></ul>', a, flags=re.DOTALL)
-    # Blockquotes
-    a = re.sub(r'^> (.+)$', r'<blockquote style="border-left:4px solid #6c63ff;padding:8px 16px;margin:8px 0;background:#f8f9ff;"></blockquote>', a, flags=re.MULTILINE)
-    # Code blocks
-    a = re.sub(r'```[\w]*
-?(.*?)```', r'<pre style="background:#1a1a2e;color:#00c896;padding:12px;border-radius:6px;overflow-x:auto;"></pre>', a, flags=re.DOTALL)
-    # Horizontal rules
-    a = re.sub(r'^---$', r'<hr style="border:none;border-top:1px solid #eee;margin:16px 0;">', a, flags=re.MULTILINE)
-    # Line breaks
-    analysis_html = a.replace("\n", "<br>")
+    analysis_html = _md_to_html(analysis)
 
     return f"""
 <!DOCTYPE html>
@@ -132,16 +127,12 @@ def _build_html_report(
 <body style="font-family:Arial,sans-serif;background:#f4f6f9;padding:20px;color:#333;">
 <div style="max-width:700px;margin:auto;background:white;border-radius:12px;
             overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,.1);">
-
-  <!-- Header -->
   <div style="background:linear-gradient(135deg,#1a1a2e,#16213e);
               color:white;padding:24px 28px;">
     <h2 style="margin:0;">📈 Alpaca Trading Bot — Daily Report</h2>
     <p style="margin:4px 0 8px;opacity:.7;">{today}</p>
     {mode_badge}
   </div>
-
-  <!-- Account Summary -->
   <div style="padding:20px 28px;background:#fafafa;border-bottom:1px solid #eee;">
     <h3 style="margin-top:0;">💼 Account Summary</h3>
     <table style="width:100%;font-size:14px;">
@@ -159,20 +150,14 @@ def _build_html_report(
       </tr>
     </table>
   </div>
-
-  <!-- Positions -->
   <div style="padding:20px 28px;border-bottom:1px solid #eee;">
     <h3 style="margin-top:0;">📊 Open Positions ({len(positions)})</h3>
     {_positions_table(positions)}
   </div>
-
-  <!-- Risk Actions -->
   <div style="padding:20px 28px;border-bottom:1px solid #eee;">
     <h3 style="margin-top:0;">⚡ Risk Management Actions</h3>
     {_actions_section(actions)}
   </div>
-
-  <!-- AI Analysis -->
   <div style="padding:20px 28px;border-bottom:1px solid #eee;">
     <h3 style="margin-top:0;">🤖 Claude AI Market Analysis</h3>
     <div style="background:#f8f9ff;border-left:4px solid #6c63ff;
@@ -180,8 +165,6 @@ def _build_html_report(
       {analysis_html}
     </div>
   </div>
-
-  <!-- Footer -->
   <div style="padding:16px 28px;background:#f4f6f9;text-align:center;
               font-size:11px;color:#999;">
     ⚠️ This bot is for educational purposes only. Not financial advice.<br>
@@ -192,29 +175,23 @@ def _build_html_report(
 </html>"""
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
-
 def send_daily_report(
     account:   dict,
     positions: list[dict],
     analysis:  str,
     actions:   list[dict],
 ) -> bool:
-    """Build and send the daily HTML email report. Returns True on success."""
     if not cfg.EMAIL_SENDER or not cfg.EMAIL_PASSWORD:
         logger.warning("Email credentials not configured — skipping report.")
         return False
-
     today   = datetime.date.today().strftime("%Y-%m-%d")
     subject = f"📈 Trading Bot Report — {today}"
     html    = _build_html_report(account, positions, analysis, actions)
-
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"]    = cfg.EMAIL_SENDER
     msg["To"]      = cfg.EMAIL_RECEIVER
     msg.attach(MIMEText(html, "html"))
-
     try:
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(cfg.EMAIL_SENDER, cfg.EMAIL_PASSWORD)
@@ -227,7 +204,6 @@ def send_daily_report(
 
 
 def send_trade_alert(subject: str, body: str) -> bool:
-    """Send a plain-text trade alert email."""
     if not cfg.EMAIL_SENDER or not cfg.EMAIL_PASSWORD:
         return False
     msg = MIMEMultipart()
