@@ -247,15 +247,30 @@ def send_daily_report(account, positions, analysis, actions) -> bool:
     msg["From"]    = cfg.EMAIL_SENDER
     msg["To"]      = cfg.EMAIL_RECEIVER
     msg.attach(MIMEText(html, "html"))
+    # Try multiple SMTP methods for compatibility with cloud environments
+    errors = []
+    # Method 1: SMTP_SSL port 465
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as server:
             server.login(cfg.EMAIL_SENDER, cfg.EMAIL_PASSWORD)
             server.sendmail(cfg.EMAIL_SENDER, cfg.EMAIL_RECEIVER, msg.as_string())
         logger.success(f"Daily report sent to {cfg.EMAIL_RECEIVER}")
         return True
     except Exception as exc:
-        logger.error(f"Failed to send email: {exc}")
-        return False
+        errors.append(f"465: {exc}")
+    # Method 2: SMTP TLS port 587
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(cfg.EMAIL_SENDER, cfg.EMAIL_PASSWORD)
+            server.sendmail(cfg.EMAIL_SENDER, cfg.EMAIL_RECEIVER, msg.as_string())
+        logger.success(f"Daily report sent via port 587 to {cfg.EMAIL_RECEIVER}")
+        return True
+    except Exception as exc:
+        errors.append(f"587: {exc}")
+    logger.error(f"Failed to send email — tried all methods: {errors}")
+    return False
 
 
 def send_trade_alert(subject: str, body: str) -> bool:
@@ -267,7 +282,9 @@ def send_trade_alert(subject: str, body: str) -> bool:
     msg["To"]      = cfg.EMAIL_RECEIVER
     msg.attach(MIMEText(body, "plain"))
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+            server.ehlo()
+            server.starttls()
             server.login(cfg.EMAIL_SENDER, cfg.EMAIL_PASSWORD)
             server.sendmail(cfg.EMAIL_SENDER, cfg.EMAIL_RECEIVER, msg.as_string())
         logger.info(f"Trade alert sent: {subject}")
